@@ -1,0 +1,144 @@
+package liên quan 
+dotnet add package System.Data.SqlClient
+dotnet add package Microsoft.EntityFrameworkCore
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer
+dotnet add package Microsoft.EntityFrameworkCore.Design
+dotnet add package Microsoft.Extensions.DependencyInjection
+dotnet add package Microsoft.Extensions.Logging.Console
+
+dotnet add package Microsoft.AspNetCore.Identity
+dotnet add package Microsoft.AspNetCore.Identity.EntityFrameworkCore
+dotnet add package Microsoft.VisualStudio.Web.CodeGeneration.Design
+dotnet add package Microsoft.AspNetCore.Authentication
+dotnet add package Microsoft.AspNetCore.Http.Abstractions
+dotnet add package Microsoft.AspNetCore.Authentication.Cookies
+dotnet add package Microsoft.AspNetCore.Authentication.Facebook
+dotnet add package Microsoft.AspNetCore.Authentication.Google
+dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+dotnet add package Microsoft.AspNetCore.Authentication.MicrosoftAccount
+dotnet add package Microsoft.AspNetCore.Authentication.oAuth
+dotnet add package Microsoft.AspNetCore.Authentication.OpenIDConnect
+dotnet add package Microsoft.AspNetCore.Authentication.Twitter
+
++Lớp User
+public class AppUser : IdentityUser
+    { 
+        // Khai báo thêm các thuộc tính ngoài các thuộc
+        // tính như UserName, Email ... cung cấp sẵn bởi IdentityUser
+    }
+
++Lớp config Startup.cs
+
+- services.AddIdentity<AppUser, IdentityRole>()
+        .AddEntityFrameworkStores<AppDbContext>()
+        .AddDefaultTokenProviders();
+- app.UseAuthentication();   // Phục hồi thông tin đăng nhập (xác thực)
+  app.UseAuthorization ();
+
+- Config Option đăng nhập
+
+  services.Configure<IdentityOptions> (options => {
+    // Thiết lập về Password
+    options.Password.RequireDigit = false; // Không bắt phải có số
+    options.Password.RequireLowercase = false; // Không bắt phải có chữ thường
+    options.Password.RequireNonAlphanumeric = false; // Không bắt ký tự đặc biệt
+    options.Password.RequireUppercase = false; // Không bắt buộc chữ in
+    options.Password.RequiredLength = 3; // Số ký tự tối thiểu của password
+    options.Password.RequiredUniqueChars = 1; // Số ký tự riêng biệt
+
+    // Cấu hình Lockout - khóa user
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes (5); // Khóa 5 phút
+    options.Lockout.MaxFailedAccessAttempts = 5; // Thất bại 5 lầ thì khóa
+    options.Lockout.AllowedForNewUsers = true;
+
+    // Cấu hình về User.
+    options.User.AllowedUserNameCharacters = // các ký tự đặt tên user
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
+    options.User.RequireUniqueEmail = true;  // Email là duy nhất
+
+    // Cấu hình đăng nhập.
+    options.SignIn.RequireConfirmedEmail = true;            // Cấu hình xác thực địa chỉ email (email phải tồn tại)
+    options.SignIn.RequireConfirmedPhoneNumber = false;     // Xác thực số điện thoại
+    // Cấu hình Lockout - khóa user
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes (2);  // Khóa 2 phút
+    options.Lockout.MaxFailedAccessAttempts = 3;      
+
+  });
+
+  - add login google
+
+    services.AddAuthentication()
+    .AddMicrosoftAccount(microsoftOptions => { ... })   // thêm provider Microsoft và cấu hình 
+    .AddGoogle(googleOptions => { ... })                // thêm provider Google và cấu hình
+    .AddTwitter(twitterOptions => { ... })              // thêm provider Twitter và cấu hình
+    .AddFacebook(facebookOptions => { ... });           // thêm provider Facebook và cấu hình
+	( option add login google
+        	// Đọc thông tin Authentication:Google từ appsettings.json
+		( cấu hình appsettings
+			{
+  				// Các cấu hình khác
+
+  				"Authentication": {
+    				"Google": {
+      				"ClientId": "điền ClientID lấy được từ google",
+      				"ClientSecret": "điền ClientSecret"
+    					}
+  				}
+			}
+		)
+        	IConfigurationSection googleAuthNSection = Configuration.GetSection("Authentication:Google");
+ 
+        	// Thiết lập ClientID và ClientSecret để truy cập API google
+        	googleOptions.ClientId = googleAuthNSection["ClientId"];
+        	googleOptions.ClientSecret = googleAuthNSection["ClientSecret"];
+        	// Cấu hình Url callback lại từ Google (không thiết lập thì mặc định là /signin-google)
+        	googleOptions.CallbackPath = "/dang-nhap-tu-google";
+	)
+
++ Inject use 
+ @inject SignInManager<AppUser> SignInManager
+ @inject UserManager<AppUser> UserManager
+
++ Xác thực google , facebook ...
+  public IList<AuthenticationScheme> ExternalLogins { get; set; }
+ - lấy các dịch vụ ngoài
+	 ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList(); => Provider gg,fb,tw
+
++ Function Reset pass 
+      -user gửi request reset pass
+                // Phát sinh Token để reset password
+                // Token sẽ được kèm vào link trong email,
+                // link dẫn đến trang /Account/ResetPassword để kiểm tra và đặt lại mật khẩu
+                var code = await _userManager.GeneratePasswordResetTokenAsync(user);
+                code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+                var callbackUrl = Url.Page(
+                    "/Account/ResetPassword",
+                    pageHandler: null,
+                    values: new { area = "Identity", code },
+                    protocol: Request.Scheme);
+
+                // Gửi email
+
+	-sau khi user xác nhận từ mail
+		thực hiện lấy mã token
+	 		Code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code))
+
+
++Lấy các dịch vụ xác thực ngoài
+	-thông tin bao gồm đã liên kêt account app với  dịch vụ ngoài hay chưa
+	-ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync ();
+
++ Chuyển hướng đến dịch vụ ngoài (Googe, Facebook)
+	-var properties = _signInManager.ConfigureExternalAuthenticationProperties (provider, redirectUrl);
+ 	-return new ChallengeResult (provider, properties);
+
++Đăng nhập tài khoản bằng thông tin từ dịch vụ ngoài
+	-var user = await _userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
+
++Liên kết tài khoản ngoài với tài khoản vừa tạo
+        -result = await _userManager.AddLoginAsync (user, info);
+
++Lấy token xác thực mail 
+	-var codeactive = await _userManager.GenerateEmailConfirmationTokenAsync (user);
+	- xác thực mail chính xác hay không
+	 	-await _userManager.ConfirmEmailAsync (user, codeactive);
